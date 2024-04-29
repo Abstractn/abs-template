@@ -116,10 +116,43 @@ export class AbsTemplate {
             parameter
           );
         };
-        const conditionMatchGroups = conditionPattern.exec(condition) as Array<string>;
-        const firstParameter = sanitizeParameter(conditionMatchGroups[1]);
-        const operator = conditionMatchGroups[2];
-        const secondParameter = sanitizeParameter(conditionMatchGroups[3]);
+        const isParameterLiteralString = (parameter: boolean|null|undefined|string|number): boolean => {
+          return typeof parameter === 'string' && (
+            ( (parameter as string).startsWith(`'`) && (parameter as string).endsWith(`'`)) ||
+            ( (parameter as string).startsWith(`"`) && (parameter as string).endsWith(`"`))
+          )
+        }
+        const fixStringLiteral = (parameter: boolean|null|undefined|string|number): boolean|null|undefined|string|number => {
+          if(isParameterLiteralString(parameter)) {
+            return (parameter as string).slice(1, (parameter as string).length - 1);
+          } else {
+            return parameter;
+          }
+        }
+        const isParameterLiteral = (parameter: boolean|null|undefined|string|number): boolean => {
+          const isParamKeyword = Boolean(
+            typeof parameter === 'number' ||
+            isParameterLiteralString(parameter) ||
+            parameter === true ||
+            parameter === false ||
+            parameter === null ||
+            parameter === undefined
+          );
+          return isParamKeyword;
+        }
+        const firstSanitizedParameter = sanitizeParameter(parsedCondition[1]);
+        const firstParameter = (
+          isParameterLiteral(firstSanitizedParameter) ?
+          fixStringLiteral(firstSanitizedParameter) :
+          this._utils.getValueByPath(data, firstSanitizedParameter as string)
+        )
+        const secondSanitizedParameter = sanitizeParameter(parsedCondition[3]);
+        const secondParameter = (
+          isParameterLiteral(secondSanitizedParameter) ?
+          fixStringLiteral(secondSanitizedParameter) :
+          this._utils.getValueByPath(data, secondSanitizedParameter as string)
+        )
+        const operator = parsedCondition[2];
         let conditionResult: boolean = false;
         switch(operator) {
           case '==':  conditionResult = Boolean((firstParameter as any) ==  (secondParameter as any)); break;
@@ -197,6 +230,18 @@ export class AbsTemplate {
     },
     removeCharacterFromString: (string: string, characterIndex: number): string => {
       return string.substring(0, characterIndex) + string.substring(characterIndex + 1, string.length);
+    },
+    getValueByPath: (obj: any, path: string): any => {
+      const keys = path.split('.');
+      let value = obj;
+      for (const key of keys) {
+        if (value && typeof value === 'object' && key in value) {
+          value = value[key];
+        } else {
+          return undefined;
+        }
+      }
+      return value;
     }
   }
 }
