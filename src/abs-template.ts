@@ -68,7 +68,7 @@ export class AbsTemplate {
     matches?.forEach(match => {
       const dataMatches = parameterPattern.exec(match) as Array<string>;
       const key = dataMatches[1];
-      const keyValue = (data as Record<string, string>)[key];
+      const keyValue = this._utils.getValueByPath(data, key);
       if(keyValue || keyValue === '') {
         template = template.replace(match, keyValue);
       }
