@@ -1,13 +1,15 @@
 Changelog
 =========
 
-### 1.0.1
+### 1.2.0
 
 * [NEW] Created changelog file
-* [FIX] Fixed IF statement parameters parsing
-* [FIX] Fixed single parameter parsing when they are object paths
-WIP:
-* [FIX] Fixed FOREACH statement parsing
+* [FIX] Fixed parsing core logic management (actually did not work at all as intended before)
+  * Fixed simple parameter parsing when value path uses dot notation
+  * Fixed condition statement's operator evaluation results
+  * Fixed cycle statement parsing and printing
+  * Resolved "nested statement parsing" bug comments
+* [FIX] Updated README.md with clearer code examples and notes about module limitations
 
 ### 1.0.0
 

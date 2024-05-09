@@ -40,7 +40,7 @@ AbsTemplate.build({
   },
 
   // the output node to where the compiled template needs to be printed
-  printTargetNode: appNode,
+  printTargetNode: document.querySelector('.dynamic-template-container'),
 
   // the position relative to `printTargetNode`
   printMethod: AbsTemplatePrintMethod.BEFORE_END,
@@ -66,7 +66,11 @@ Starting with an object defined from our code:
 
 ```typescript
 const myData = {
-  value: 'hello world'
+  greeting: 'Hello',
+  user: {
+    firstName: 'John',
+    lastName: 'Doe'
+  }
 };
 ```
 
@@ -74,21 +78,24 @@ use it in HTML with
 
 ```html
 <template id="my-data-template">
-  <span>{{value}}</span>
+  <span>{{greeting}} {{user.firstName}} {{user.lastName}}</span>
 </template>
 ```
 
 and after compilation it will turn into
 
 ```html
-<span>hello world</span>
+<span>Hello John Doe</span>
 ```
 
 
 ### 2) Conditions
 
-`{{if condition}}...{{/if}}` is the syntax that can decide wether the content of the condition will be printed or not.
-This is the list of all available operators:
+`{{if condition}}...{{/if}}` and `{{if condition}}...{{else}}...{{/if}}` are the syntaxes that can decide wether the content of the condition will be printed or not for the first case and print either one content block or the other depending on the condition.
+
+The accepted format for conditions are both a single variable that will be implicitly interpreted as a boolean check (much like a common `if()` from JS/TS code) or a set of two variables to evaluate with an operator in between them.
+
+The list of all available operators is the following:
 - `==`
 - `==`
 - `===`
@@ -133,7 +140,9 @@ status:
 <span>true</span>
 ```
 
-A single variable passed as condition to the IF statement will be interpreted as implicit boolean much like a common IF from code.
+> NOTE: full condition syntax strictly accepts only the following format: `<parameter_1> <operator> <parameter_2>`.
+> Using parenthesis for grouping and/or multiple operators will not work.
+
 
 
 ### 3) Loops
@@ -196,7 +205,34 @@ And this is how the list turned out after parsing:
 </ol>
 ```
 
+An important note to point out is that if you use an identifier for the list iterable that is already present inside the first level of the data object, the object outside of the list will not be accessible since the identifiers overlap and `forEach`'s scope takes priority.
+
+```typescript
+const myData = {
+  item: 'OUTSIDE LIST',
+  list: [ 'INSIDE LIST' ]
+}
+```
+
+```html
+1. {{item}}
+
+{{forEach item in list}}
+  2. {{item}}
+{{/forEach}}
+
+3. {{item}}
+```
+
+The output will be:
+```html
+1. OUTSIDE LIST
+2. INSIDE LIST
+3. OUTSIDE LIST
+```
+
+
 
 ## KNOWN BUGS
 
-- Same statements consecutively inside each other are probably not parsed correctly
+- ~~Same statements consecutively inside each other are probably not parsed correctly~~ Fixed in 1.2
