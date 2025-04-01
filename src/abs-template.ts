@@ -5,6 +5,11 @@ export enum AbsTemplatePrintMethod {
   AFTER_END = 'afterend',
 };
 
+export enum AbsTemplateBracketType {
+  CURLY = 'curly',
+  SQUARE = 'square',
+};
+
 export type AbsTemplateData = Record<string, string> | Object | any[];
 
 export interface AbsTemplateBuildConfig {
@@ -12,20 +17,39 @@ export interface AbsTemplateBuildConfig {
   templateData?: AbsTemplateData;
   printTargetNode: HTMLElement;
   printMethod: AbsTemplatePrintMethod;
+  bracketType?: AbsTemplateBracketType;
 };
 
 export class AbsTemplate {
   private static readonly CONSOLE_PREFIX: string = '[ABS][TEMPLATE]';
-  private static readonly VALUE_STATEMENT_OPEN: string = '{{';
-  private static readonly VALUE_PATTERN_STRING: string = '{{(.+?)}}';
-  private static readonly CONDITION_STATEMENT_OPEN: string = '{{if';
-  private static readonly CONDITION_STATEMENT_PATTERN_STRING: string = '{{if (.+?)}}(.+?)(?:{{else}}(.+?))?{{/if}}';
   private static readonly CONDITION_PATTERN_STRING: string = '(.+) (==|===|!=|!==|>|>=|<|<=|&&|\|\||%|\^) (.+)';
-  private static readonly CONDITION_STATEMENT_CLOSE: string = '{{/if}}';
-  private static readonly CYCLE_STATEMENT_OPEN: string = '{{forEach';
-  private static readonly CYCLE_STATEMENT_PATTERN_STRING: string = '{{forEach (.+?) in (.+?)}}(.*){{/forEach}}';
-  private static readonly CYCLE_STATEMENT_CLOSE: string = '{{/forEach}}';
   
+  private static getBracketPatterns(bracketType: AbsTemplateBracketType) {
+    const patterns = {
+      [AbsTemplateBracketType.CURLY]: {
+        VALUE_STATEMENT_OPEN: '{{',
+        VALUE_PATTERN_STRING: '{{(.+?)}}',
+        CONDITION_STATEMENT_OPEN: '{{if',
+        CONDITION_STATEMENT_PATTERN_STRING: '{{if (.+?)}}(.+?)(?:{{else}}(.+?))?{{/if}}',
+        CONDITION_STATEMENT_CLOSE: '{{/if}}',
+        CYCLE_STATEMENT_OPEN: '{{forEach',
+        CYCLE_STATEMENT_PATTERN_STRING: '{{forEach (.+?) in (.+?)}}(.*){{/forEach}}',
+        CYCLE_STATEMENT_CLOSE: '{{/forEach}}',
+      },
+      [AbsTemplateBracketType.SQUARE]: {
+        VALUE_STATEMENT_OPEN: '[[',
+        VALUE_PATTERN_STRING: '\\[\\[(.+?)\\]\\]',
+        CONDITION_STATEMENT_OPEN: '[[if',
+        CONDITION_STATEMENT_PATTERN_STRING: '\\[\\[if (.+?)\\]\\](.+?)(?:\\[\\[else\\]\\](.+?))?\\[\\[/if\\]\\]',
+        CONDITION_STATEMENT_CLOSE: '[[/if]]',
+        CYCLE_STATEMENT_OPEN: '[[forEach',
+        CYCLE_STATEMENT_PATTERN_STRING: '\\[\\[forEach (.+?) in (.+?)\\]\\](.*)\\[\\[/forEach\\]\\]',
+        CYCLE_STATEMENT_CLOSE: '[[/forEach]]',
+      }
+    };
+    return patterns[bracketType];
+  }
+
   public static build(config: AbsTemplateBuildConfig): void {
     try {
       if(!Boolean(config.templateNode)) throw  `${this.CONSOLE_PREFIX} "templateNode" in config is null or undefined`;
@@ -34,7 +58,7 @@ export class AbsTemplate {
       const isDataDefined = !(config.templateData === undefined || config.templateData === null);
       if(isDataDefined) {
         templateNodeContentString = templateNodeContentString.replaceAll('\n', '');
-        templateNodeContentString = this.parse(templateNodeContentString, config.templateData as AbsTemplateData);
+        templateNodeContentString = this.parse(templateNodeContentString, config.templateData as AbsTemplateData, config.bracketType || AbsTemplateBracketType.CURLY);
       }
 
       const parsedNode = this._utils.stringToNode(templateNodeContentString);
@@ -62,10 +86,11 @@ export class AbsTemplate {
     });
   }
 
-  private static parseValue(template: string, data: AbsTemplateData): string {
+  private static parseValue(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType): string {
+    const patterns = this.getBracketPatterns(bracketType);
     let compiledTemplate = '';
 
-    const matches = template.match(new RegExp(this.VALUE_PATTERN_STRING));
+    const matches = template.match(new RegExp(patterns.VALUE_PATTERN_STRING));
     if(matches?.length) {
       const fullMatch = matches[0];
       const valueIdentifier = matches[1];
@@ -76,8 +101,9 @@ export class AbsTemplate {
     return compiledTemplate;
   }
 
-  private static parseCondition(template: string, data: AbsTemplateData): string {
-    const conditionStatementPattern = new RegExp(this.CONDITION_STATEMENT_PATTERN_STRING, '');
+  private static parseCondition(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType): string {
+    const patterns = this.getBracketPatterns(bracketType);
+    const conditionStatementPattern = new RegExp(patterns.CONDITION_STATEMENT_PATTERN_STRING, '');
     const conditionPattern = new RegExp(this.CONDITION_PATTERN_STRING, '');
 
     let compiledTemplate = '';
@@ -94,7 +120,7 @@ export class AbsTemplate {
         const valueFromData = this._utils.getValueByPath(data, condition);
         const implicitCheck = Boolean(valueFromData);
 
-        const parsedContent = this._utils.if.parseContentFromCondition(implicitCheck, data, positiveContent, negativeContent);
+        const parsedContent = this._utils.if.parseContentFromCondition(implicitCheck, data, positiveContent, negativeContent, bracketType);
         compiledTemplate = parsedContent;
       } else if(parsedCondition?.length) {
         const firstSanitizedParameter = this._utils.if.sanitizeParameter(parsedCondition[1]);
@@ -129,7 +155,7 @@ export class AbsTemplate {
           case '^':   conditionResult = Boolean(parseFloat(firstParameter as string) ^ parseFloat(secondParameter as string)); break;
         }
 
-        const parsedContent = this._utils.if.parseContentFromCondition(conditionResult, data, positiveContent, negativeContent);
+        const parsedContent = this._utils.if.parseContentFromCondition(conditionResult, data, positiveContent, negativeContent, bracketType);
         compiledTemplate = parsedContent;
       }
     }
@@ -137,10 +163,11 @@ export class AbsTemplate {
     return compiledTemplate;
   }
 
-  private static parseCycle(template: string, data: AbsTemplateData): string {
+  private static parseCycle(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType): string {
+    const patterns = this.getBracketPatterns(bracketType);
     let compiledTemplate = '';
     
-    const matches = template.match(new RegExp(this.CYCLE_STATEMENT_PATTERN_STRING));
+    const matches = template.match(new RegExp(patterns.CYCLE_STATEMENT_PATTERN_STRING));
     if(matches) {
       const keyOfListIdentifier = matches[1];
       const listIdentifier = matches[2];
@@ -155,14 +182,15 @@ export class AbsTemplate {
             ...this._utils.deepCopy(data),
             [keyOfListIdentifier]: listItem,
           };
-          compiledTemplate += this.parse(cycleContent, iterationData);
+          compiledTemplate += this.parse(cycleContent, iterationData, bracketType);
         });
       }
     }
     return compiledTemplate;
   }
 
-  private static parse(template: string, data: AbsTemplateData): string {
+  private static parse(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType): string {
+    const patterns = this.getBracketPatterns(bracketType);
     let isTagOpen = false;
     let tagOpenStack = 0;
     let currentClosingTag = '';
@@ -171,13 +199,13 @@ export class AbsTemplate {
     let compiledTemplate = '';
 
     for(let i = 0; i < template.length; i++) {
-      const isConditionOpening = template.slice(i, i + this.CONDITION_STATEMENT_OPEN.length) === this.CONDITION_STATEMENT_OPEN;
-      const isCycleOpening = template.slice(i, i + this.CYCLE_STATEMENT_OPEN.length) === this.CYCLE_STATEMENT_OPEN;
-      const isValueOpening = template.slice(i, i + this.VALUE_STATEMENT_OPEN.length) === this.VALUE_STATEMENT_OPEN;
+      const isConditionOpening = template.slice(i, i + patterns.CONDITION_STATEMENT_OPEN.length) === patterns.CONDITION_STATEMENT_OPEN;
+      const isCycleOpening = template.slice(i, i + patterns.CYCLE_STATEMENT_OPEN.length) === patterns.CYCLE_STATEMENT_OPEN;
+      const isValueOpening = template.slice(i, i + patterns.VALUE_STATEMENT_OPEN.length) === patterns.VALUE_STATEMENT_OPEN;
       const isClosingCurrentTag = isTagOpen && currentClosingTag && template.slice(i, i + currentClosingTag.length) === currentClosingTag;
       const isOpeningNested = isTagOpen && (
-        (isCycleOpening && currentClosingTag === this.CYCLE_STATEMENT_CLOSE) ||
-        (isConditionOpening && currentClosingTag === this.CONDITION_STATEMENT_CLOSE)
+        (isCycleOpening && currentClosingTag === patterns.CYCLE_STATEMENT_CLOSE) ||
+        (isConditionOpening && currentClosingTag === patterns.CONDITION_STATEMENT_CLOSE)
       );
       
       if(isConditionOpening || isCycleOpening) {
@@ -188,8 +216,8 @@ export class AbsTemplate {
           openTagIndex = i;
 
           currentClosingTag = 
-            isCycleOpening ? this.CYCLE_STATEMENT_CLOSE :
-            isConditionOpening ? this.CONDITION_STATEMENT_CLOSE :
+            isCycleOpening ? patterns.CYCLE_STATEMENT_CLOSE :
+            isConditionOpening ? patterns.CONDITION_STATEMENT_CLOSE :
             '';
         }
       } else if(isClosingCurrentTag) {
@@ -200,12 +228,12 @@ export class AbsTemplate {
           closeTagIndex = i + currentClosingTag.length;
           i += (currentClosingTag.length - 1);
           const currentBlockTemplate = template.slice(openTagIndex, closeTagIndex);
-          const isBlockCondition = currentBlockTemplate.startsWith(this.CONDITION_STATEMENT_OPEN);
-          const isBlockCycle = currentBlockTemplate.startsWith(this.CYCLE_STATEMENT_OPEN);
+          const isBlockCondition = currentBlockTemplate.startsWith(patterns.CONDITION_STATEMENT_OPEN);
+          const isBlockCycle = currentBlockTemplate.startsWith(patterns.CYCLE_STATEMENT_OPEN);
           
           const currentParsedBlock = (
-            isBlockCondition ? this.parseCondition(currentBlockTemplate, data) :
-            isBlockCycle ? this.parseCycle(currentBlockTemplate, data) :
+            isBlockCondition ? this.parseCondition(currentBlockTemplate, data, bracketType) :
+            isBlockCycle ? this.parseCycle(currentBlockTemplate, data, bracketType) :
             ''
           );
           compiledTemplate += currentParsedBlock;
@@ -214,10 +242,10 @@ export class AbsTemplate {
         }
 
       } else if(isValueOpening && !isTagOpen) {
-        const valueMatches = template.slice(i).match(new RegExp(this.VALUE_PATTERN_STRING));
+        const valueMatches = template.slice(i).match(new RegExp(patterns.VALUE_PATTERN_STRING));
         if(valueMatches) {
           const fullMatch = valueMatches[0];
-          const compiledValue = this.parseValue(fullMatch, data);
+          const compiledValue = this.parseValue(fullMatch, data, bracketType);
           compiledTemplate += compiledValue;
           i += (fullMatch.length - 1);
         }
@@ -229,8 +257,8 @@ export class AbsTemplate {
     return compiledTemplate;
   }
 
-  public static compile(template: string, data: AbsTemplateData): string {
-    return this.parse(template, data);
+  public static compile(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType): string {
+    return this.parse(template, data, bracketType);
   }
 
   private static _utils = {
@@ -271,11 +299,18 @@ export class AbsTemplate {
       return value;
     },
     if: {
-      parseContentFromCondition: (conditionResult: boolean, data: any, positiveContent?: string, negativeContent?: string): string => {
+      parseContentFromCondition: (
+        conditionResult: boolean,
+        data: any,
+        positiveContent?: string,
+        negativeContent?: string,
+        bracketType?: AbsTemplateBracketType
+      ): string => {
         let compiledContent = '';
         compiledContent = this.parse(
           conditionResult ? positiveContent || '' : negativeContent || '',
-          data
+          data,
+          bracketType || AbsTemplateBracketType.CURLY
         );
         return compiledContent;
       },
