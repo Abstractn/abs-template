@@ -44,6 +44,9 @@ AbsTemplate.build({
 
   // the position relative to `printTargetNode`
   printMethod: AbsTemplatePrintMethod.BEFORE_END,
+
+  // change brackets used by the syntax if needed
+  bracketType: AbsTemplateBracketType.CURLY,
 })
 ```
 
@@ -58,6 +61,7 @@ Underneath `build()`'s logic there's `compile()`: if you need to just parse your
 ## Template Syntax
 
 You can write double curly brackets to write a couple of neat things inside your HTML to make minimal logic and print data with it.
+As of version 1.3 the brackets used by the syntax can be customized via config parameter with `bracketType: AbsTemplateBracketType` to avoid potential conflicts.
 
 
 ### 1) Data

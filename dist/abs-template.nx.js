@@ -7,8 +7,39 @@ var AbsTemplatePrintMethod;
     AbsTemplatePrintMethod["AFTER_END"] = "afterend";
 })(AbsTemplatePrintMethod || (AbsTemplatePrintMethod = {}));
 ;
+var AbsTemplateBracketType;
+(function (AbsTemplateBracketType) {
+    AbsTemplateBracketType["CURLY"] = "curly";
+    AbsTemplateBracketType["SQUARE"] = "square";
+})(AbsTemplateBracketType || (AbsTemplateBracketType = {}));
+;
 ;
 class AbsTemplate {
+    static getPatterns(bracketType = AbsTemplateBracketType.CURLY) {
+        const patterns = {
+            [AbsTemplateBracketType.CURLY]: {
+                VALUE_STATEMENT_OPEN: '{{',
+                VALUE_PATTERN_STRING: '{{(.+?)}}',
+                CONDITION_STATEMENT_OPEN: '{{if',
+                CONDITION_STATEMENT_PATTERN_STRING: '{{if (.+?)}}(.+?)(?:{{else}}(.+?))?{{/if}}',
+                CONDITION_STATEMENT_CLOSE: '{{/if}}',
+                CYCLE_STATEMENT_OPEN: '{{forEach',
+                CYCLE_STATEMENT_PATTERN_STRING: '{{forEach (.+?) in (.+?)}}(.*){{/forEach}}',
+                CYCLE_STATEMENT_CLOSE: '{{/forEach}}',
+            },
+            [AbsTemplateBracketType.SQUARE]: {
+                VALUE_STATEMENT_OPEN: '[[',
+                VALUE_PATTERN_STRING: '\\[\\[(.+?)\\]\\]',
+                CONDITION_STATEMENT_OPEN: '[[if',
+                CONDITION_STATEMENT_PATTERN_STRING: '\\[\\[if (.+?)\\]\\](.+?)(?:\\[\\[else\\]\\](.+?))?\\[\\[/if\\]\\]',
+                CONDITION_STATEMENT_CLOSE: '[[/if]]',
+                CYCLE_STATEMENT_OPEN: '[[forEach',
+                CYCLE_STATEMENT_PATTERN_STRING: '\\[\\[forEach (.+?) in (.+?)\\]\\](.*)\\[\\[/forEach\\]\\]',
+                CYCLE_STATEMENT_CLOSE: '[[/forEach]]',
+            }
+        };
+        return patterns[bracketType];
+    }
     static build(config) {
         try {
             if (!Boolean(config.templateNode))
@@ -17,7 +48,7 @@ class AbsTemplate {
             const isDataDefined = !(config.templateData === undefined || config.templateData === null);
             if (isDataDefined) {
                 templateNodeContentString = templateNodeContentString.replaceAll('\n', '');
-                templateNodeContentString = this.parse(templateNodeContentString, config.templateData);
+                templateNodeContentString = this.parse(templateNodeContentString, config.templateData, config.bracketType || AbsTemplateBracketType.CURLY);
             }
             const parsedNode = this._utils.stringToNode(templateNodeContentString);
             this.print(Array.from(parsedNode.childNodes), config.printTargetNode, config.printMethod);
@@ -35,9 +66,10 @@ class AbsTemplate {
             nodeItem.nodeType === Node.TEXT_NODE && target.insertAdjacentText(method, nodeItem.nodeValue);
         });
     }
-    static parseValue(template, data) {
+    static parseValue(template, data, bracketType) {
+        const patterns = this.getPatterns(bracketType);
         let compiledTemplate = '';
-        const matches = template.match(new RegExp(this.VALUE_PATTERN_STRING));
+        const matches = template.match(new RegExp(patterns.VALUE_PATTERN_STRING));
         if (matches?.length) {
             const fullMatch = matches[0];
             const valueIdentifier = matches[1];
@@ -46,8 +78,9 @@ class AbsTemplate {
         }
         return compiledTemplate;
     }
-    static parseCondition(template, data) {
-        const conditionStatementPattern = new RegExp(this.CONDITION_STATEMENT_PATTERN_STRING, '');
+    static parseCondition(template, data, bracketType) {
+        const patterns = this.getPatterns(bracketType);
+        const conditionStatementPattern = new RegExp(patterns.CONDITION_STATEMENT_PATTERN_STRING, '');
         const conditionPattern = new RegExp(this.CONDITION_PATTERN_STRING, '');
         let compiledTemplate = '';
         const statementMatches = template.match(conditionStatementPattern);
@@ -60,7 +93,7 @@ class AbsTemplate {
             if (isConditionImplicit) {
                 const valueFromData = this._utils.getValueByPath(data, condition);
                 const implicitCheck = Boolean(valueFromData);
-                const parsedContent = this._utils.if.parseContentFromCondition(implicitCheck, data, positiveContent, negativeContent);
+                const parsedContent = this._utils.if.parseContentFromCondition(implicitCheck, data, positiveContent, negativeContent, bracketType);
                 compiledTemplate = parsedContent;
             }
             else if (parsedCondition?.length) {
@@ -106,15 +139,16 @@ class AbsTemplate {
                         conditionResult = Boolean(parseFloat(firstParameter) ^ parseFloat(secondParameter));
                         break;
                 }
-                const parsedContent = this._utils.if.parseContentFromCondition(conditionResult, data, positiveContent, negativeContent);
+                const parsedContent = this._utils.if.parseContentFromCondition(conditionResult, data, positiveContent, negativeContent, bracketType);
                 compiledTemplate = parsedContent;
             }
         }
         return compiledTemplate;
     }
-    static parseCycle(template, data) {
+    static parseCycle(template, data, bracketType) {
+        const patterns = this.getPatterns(bracketType);
         let compiledTemplate = '';
-        const matches = template.match(new RegExp(this.CYCLE_STATEMENT_PATTERN_STRING));
+        const matches = template.match(new RegExp(patterns.CYCLE_STATEMENT_PATTERN_STRING));
         if (matches) {
             const keyOfListIdentifier = matches[1];
             const listIdentifier = matches[2];
@@ -128,13 +162,14 @@ class AbsTemplate {
                         ...this._utils.deepCopy(data),
                         [keyOfListIdentifier]: listItem,
                     };
-                    compiledTemplate += this.parse(cycleContent, iterationData);
+                    compiledTemplate += this.parse(cycleContent, iterationData, bracketType);
                 });
             }
         }
         return compiledTemplate;
     }
-    static parse(template, data) {
+    static parse(template, data, bracketType) {
+        const patterns = this.getPatterns(bracketType);
         let isTagOpen = false;
         let tagOpenStack = 0;
         let currentClosingTag = '';
@@ -142,12 +177,12 @@ class AbsTemplate {
         let closeTagIndex = -1;
         let compiledTemplate = '';
         for (let i = 0; i < template.length; i++) {
-            const isConditionOpening = template.slice(i, i + this.CONDITION_STATEMENT_OPEN.length) === this.CONDITION_STATEMENT_OPEN;
-            const isCycleOpening = template.slice(i, i + this.CYCLE_STATEMENT_OPEN.length) === this.CYCLE_STATEMENT_OPEN;
-            const isValueOpening = template.slice(i, i + this.VALUE_STATEMENT_OPEN.length) === this.VALUE_STATEMENT_OPEN;
+            const isConditionOpening = template.slice(i, i + patterns.CONDITION_STATEMENT_OPEN.length) === patterns.CONDITION_STATEMENT_OPEN;
+            const isCycleOpening = template.slice(i, i + patterns.CYCLE_STATEMENT_OPEN.length) === patterns.CYCLE_STATEMENT_OPEN;
+            const isValueOpening = template.slice(i, i + patterns.VALUE_STATEMENT_OPEN.length) === patterns.VALUE_STATEMENT_OPEN;
             const isClosingCurrentTag = isTagOpen && currentClosingTag && template.slice(i, i + currentClosingTag.length) === currentClosingTag;
-            const isOpeningNested = isTagOpen && ((isCycleOpening && currentClosingTag === this.CYCLE_STATEMENT_CLOSE) ||
-                (isConditionOpening && currentClosingTag === this.CONDITION_STATEMENT_CLOSE));
+            const isOpeningNested = isTagOpen && ((isCycleOpening && currentClosingTag === patterns.CYCLE_STATEMENT_CLOSE) ||
+                (isConditionOpening && currentClosingTag === patterns.CONDITION_STATEMENT_CLOSE));
             if (isConditionOpening || isCycleOpening) {
                 if (isOpeningNested) {
                     tagOpenStack++;
@@ -156,8 +191,8 @@ class AbsTemplate {
                     isTagOpen = true;
                     openTagIndex = i;
                     currentClosingTag =
-                        isCycleOpening ? this.CYCLE_STATEMENT_CLOSE :
-                            isConditionOpening ? this.CONDITION_STATEMENT_CLOSE :
+                        isCycleOpening ? patterns.CYCLE_STATEMENT_CLOSE :
+                            isConditionOpening ? patterns.CONDITION_STATEMENT_CLOSE :
                                 '';
                 }
             }
@@ -170,10 +205,10 @@ class AbsTemplate {
                     closeTagIndex = i + currentClosingTag.length;
                     i += (currentClosingTag.length - 1);
                     const currentBlockTemplate = template.slice(openTagIndex, closeTagIndex);
-                    const isBlockCondition = currentBlockTemplate.startsWith(this.CONDITION_STATEMENT_OPEN);
-                    const isBlockCycle = currentBlockTemplate.startsWith(this.CYCLE_STATEMENT_OPEN);
-                    const currentParsedBlock = (isBlockCondition ? this.parseCondition(currentBlockTemplate, data) :
-                        isBlockCycle ? this.parseCycle(currentBlockTemplate, data) :
+                    const isBlockCondition = currentBlockTemplate.startsWith(patterns.CONDITION_STATEMENT_OPEN);
+                    const isBlockCycle = currentBlockTemplate.startsWith(patterns.CYCLE_STATEMENT_OPEN);
+                    const currentParsedBlock = (isBlockCondition ? this.parseCondition(currentBlockTemplate, data, bracketType) :
+                        isBlockCycle ? this.parseCycle(currentBlockTemplate, data, bracketType) :
                             '');
                     compiledTemplate += currentParsedBlock;
                     openTagIndex = -1;
@@ -181,10 +216,10 @@ class AbsTemplate {
                 }
             }
             else if (isValueOpening && !isTagOpen) {
-                const valueMatches = template.slice(i).match(new RegExp(this.VALUE_PATTERN_STRING));
+                const valueMatches = template.slice(i).match(new RegExp(patterns.VALUE_PATTERN_STRING));
                 if (valueMatches) {
                     const fullMatch = valueMatches[0];
-                    const compiledValue = this.parseValue(fullMatch, data);
+                    const compiledValue = this.parseValue(fullMatch, data, bracketType);
                     compiledTemplate += compiledValue;
                     i += (fullMatch.length - 1);
                 }
@@ -195,21 +230,13 @@ class AbsTemplate {
         }
         return compiledTemplate;
     }
-    static compile(template, data) {
-        return this.parse(template, data);
+    static compile(template, data, bracketType = AbsTemplateBracketType.CURLY) {
+        return this.parse(template, data, bracketType);
     }
 }
 _a = AbsTemplate;
 AbsTemplate.CONSOLE_PREFIX = '[ABS][TEMPLATE]';
-AbsTemplate.VALUE_STATEMENT_OPEN = '{{';
-AbsTemplate.VALUE_PATTERN_STRING = '{{(.+?)}}';
-AbsTemplate.CONDITION_STATEMENT_OPEN = '{{if';
-AbsTemplate.CONDITION_STATEMENT_PATTERN_STRING = '{{if (.+?)}}(.+?)(?:{{else}}(.+?))?{{/if}}';
 AbsTemplate.CONDITION_PATTERN_STRING = '(.+) (==|===|!=|!==|>|>=|<|<=|&&|\|\||%|\^) (.+)';
-AbsTemplate.CONDITION_STATEMENT_CLOSE = '{{/if}}';
-AbsTemplate.CYCLE_STATEMENT_OPEN = '{{forEach';
-AbsTemplate.CYCLE_STATEMENT_PATTERN_STRING = '{{forEach (.+?) in (.+?)}}(.*){{/forEach}}';
-AbsTemplate.CYCLE_STATEMENT_CLOSE = '{{/forEach}}';
 AbsTemplate.getContentFromTemplateNode = (templateNode) => {
     const templateNodeContent = templateNode.innerHTML;
     const domParser = new DOMParser();
@@ -255,9 +282,9 @@ AbsTemplate._utils = {
         return value;
     },
     if: {
-        parseContentFromCondition: (conditionResult, data, positiveContent, negativeContent) => {
+        parseContentFromCondition: (conditionResult, data, positiveContent, negativeContent, bracketType) => {
             let compiledContent = '';
-            compiledContent = _a.parse(conditionResult ? positiveContent || '' : negativeContent || '', data);
+            compiledContent = _a.parse(conditionResult ? positiveContent || '' : negativeContent || '', data, bracketType || AbsTemplateBracketType.CURLY);
             return compiledContent;
         },
         sanitizeParameter: (parameter) => {

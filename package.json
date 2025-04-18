@@ -1,6 +1,6 @@
 {
   "name": "abs-template",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Parse and compile template partials in static HTMLs",
   "types": "dist/abs-template.d.ts",
   "browser": "dist/abs-template.js",
