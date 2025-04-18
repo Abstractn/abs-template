@@ -24,7 +24,7 @@ export class AbsTemplate {
   private static readonly CONSOLE_PREFIX: string = '[ABS][TEMPLATE]';
   private static readonly CONDITION_PATTERN_STRING: string = '(.+) (==|===|!=|!==|>|>=|<|<=|&&|\|\||%|\^) (.+)';
   
-  private static getBracketPatterns(bracketType: AbsTemplateBracketType) {
+  private static getPatterns(bracketType: AbsTemplateBracketType = AbsTemplateBracketType.CURLY) {
     const patterns = {
       [AbsTemplateBracketType.CURLY]: {
         VALUE_STATEMENT_OPEN: '{{',
@@ -87,7 +87,7 @@ export class AbsTemplate {
   }
 
   private static parseValue(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType): string {
-    const patterns = this.getBracketPatterns(bracketType);
+    const patterns = this.getPatterns(bracketType);
     let compiledTemplate = '';
 
     const matches = template.match(new RegExp(patterns.VALUE_PATTERN_STRING));
@@ -102,7 +102,7 @@ export class AbsTemplate {
   }
 
   private static parseCondition(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType): string {
-    const patterns = this.getBracketPatterns(bracketType);
+    const patterns = this.getPatterns(bracketType);
     const conditionStatementPattern = new RegExp(patterns.CONDITION_STATEMENT_PATTERN_STRING, '');
     const conditionPattern = new RegExp(this.CONDITION_PATTERN_STRING, '');
 
@@ -164,7 +164,7 @@ export class AbsTemplate {
   }
 
   private static parseCycle(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType): string {
-    const patterns = this.getBracketPatterns(bracketType);
+    const patterns = this.getPatterns(bracketType);
     let compiledTemplate = '';
     
     const matches = template.match(new RegExp(patterns.CYCLE_STATEMENT_PATTERN_STRING));
@@ -190,7 +190,7 @@ export class AbsTemplate {
   }
 
   private static parse(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType): string {
-    const patterns = this.getBracketPatterns(bracketType);
+    const patterns = this.getPatterns(bracketType);
     let isTagOpen = false;
     let tagOpenStack = 0;
     let currentClosingTag = '';
@@ -257,7 +257,7 @@ export class AbsTemplate {
     return compiledTemplate;
   }
 
-  public static compile(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType): string {
+  public static compile(template: string, data: AbsTemplateData, bracketType: AbsTemplateBracketType = AbsTemplateBracketType.CURLY): string {
     return this.parse(template, data, bracketType);
   }
 
